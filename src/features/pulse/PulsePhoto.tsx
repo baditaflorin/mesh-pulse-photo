@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCamera, useFlashlight } from "@baditaflorin/mesh-common";
 import { createRoomSync } from "../sync/yjsRoom";
 import { createClockSync } from "../sync/clockSync";
 import { maybeFetchTurnCredentials } from "../sync/iceConfig";
@@ -26,16 +27,35 @@ export function PulsePhoto({ roomId }: Props) {
   const [confidence, setConfidence] = useState(0);
   const [roomBpm, setRoomBpm] = useState<number | null>(null);
   const [peerCount, setPeerCount] = useState(0);
-  const [torchSupported, setTorchSupported] = useState<boolean | null>(null);
   const [brightness, setBrightness] = useState(0); // 0..1 envelope for the pulsing background
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cam = useCamera({ armed, facing: "environment" });
+  const torch = useFlashlight(cam.stream);
+  const videoRef = cam.videoRef;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const trackRef = useRef<MediaStreamTrack | null>(null);
   const bufRef = useRef<number[]>([]);
   const lastSampleAtRef = useRef(0);
   const lastPublishAtRef = useRef(0);
+
+  // Surface camera errors through the existing error UI.
+  useEffect(() => {
+    if (cam.error) setError(cam.error);
+  }, [cam.error]);
+
+  // Auto-engage torch once the camera is ready (pulse-photo needs the torch on
+  // for the finger-over-lens reading). The hook is a no-op if unsupported.
+  useEffect(() => {
+    if (!armed || !cam.ready || !torch.supported || torch.on) return;
+    void torch.setOn(true);
+  }, [armed, cam.ready, torch.supported, torch.on, torch.setOn]);
+
+  const torchSupported: boolean | null = !armed
+    ? null
+    : cam.error
+      ? false
+      : cam.ready
+        ? torch.supported
+        : null;
 
   const mesh = useMemo(() => {
     if (!armed) return null;
@@ -53,7 +73,6 @@ export function PulsePhoto({ roomId }: Props) {
     return () => {
       mesh?.clock.destroy();
       mesh?.room.provider?.destroy();
-      streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, [mesh]);
 
@@ -150,49 +169,10 @@ export function PulsePhoto({ roomId }: Props) {
     return () => cancelAnimationFrame(raf);
   }, [mesh, bpm, confidence, roomBpm]);
 
-  const onArm = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      const track = stream.getVideoTracks()[0] ?? null;
-      trackRef.current = track;
-
-      // Try to turn on torch
-      if (track) {
-        const caps =
-          (track.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean }) ?? {};
-        if (caps.torch) {
-          setTorchSupported(true);
-          try {
-            await track.applyConstraints({
-              advanced: [{ torch: true } as MediaTrackConstraintSet & { torch: boolean }],
-            });
-          } catch {
-            // ignore — torch not actually settable on this device
-          }
-        } else {
-          setTorchSupported(false);
-        }
-      }
-
-      setArmed(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+  const onArm = () => {
+    setError(null);
+    setArmed(true);
   };
-
-  useEffect(() => {
-    if (!armed) return;
-    const video = videoRef.current;
-    const stream = streamRef.current;
-    if (video && stream) {
-      video.srcObject = stream;
-      void video.play().catch(() => undefined);
-    }
-  }, [armed]);
 
   const onRecalibrate = () => {
     bufRef.current = [];
