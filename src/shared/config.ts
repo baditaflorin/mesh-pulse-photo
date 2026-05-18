@@ -1,6 +1,9 @@
 export const appConfig = {
   appName: "mesh-pulse-photo",
   storagePrefix: "mesh-pulse-photo",
+  description:
+    "Group heart-rate biofeedback — phones read pulse via the rear camera and glow at the room's average BPM.",
+  accentHex: "#ff8a9a",
   version: __APP_VERSION__,
   commit: __GIT_COMMIT__,
   repositoryUrl: "https://github.com/baditaflorin/mesh-pulse-photo",
