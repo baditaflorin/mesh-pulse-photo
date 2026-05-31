@@ -11,13 +11,15 @@
 
 Place your fingertip lightly over your phone's rear camera (and torch). The phone reads the green channel of the camera frame to estimate your BPM. Every phone publishes its BPM into the mesh. All phones glow together at the room's **average BPM**, synced via mesh-time. Group biofeedback meditation without a $300 watch.
 
+**No rear camera or torch?** On desktop, or on iOS Safari where there is no torch API, the camera reading may not work. A **manual BPM entry** lets you type your pulse in by hand; it publishes into the exact same mesh channel the camera path uses, so the room average and the group glow behave identically either way.
+
 ## How it works
 
 - Each phone joins a shared Yjs document over y-webrtc.
 - The rear camera is opened with `getUserMedia({ video: { facingMode: 'environment' } })`. Torch is turned on via `track.applyConstraints({ advanced: [{ torch: true }] })` where supported (Android Chrome). On iOS Safari there is no torch API — see [ADR 0003](docs/adr/0003-ios-torch-caveat.md).
 - A 16×16 center crop is drawn to an offscreen canvas every ~33 ms; the green-channel mean is appended to a 6-second ring buffer.
 - A 1-pole HP (0.5 Hz) + LP (3 Hz) bandpasses the signal; autocorrelation finds the dominant period in the 30–180 BPM lag range. Confidence = autocorrelation peak / signal energy. See [ADR 0002](docs/adr/0002-autocorrelation-bpm.md).
-- Each phone publishes `{ bpm, ts }` to Yjs awareness every 2 s (only when confidence ≥ 0.3).
+- Each phone publishes `{ bpm, ts }` to Yjs awareness every 2 s (only when confidence ≥ 0.3, or whenever a BPM is entered manually — the manual value bypasses the confidence gate and writes the same `hr` awareness field).
 - The screen pulses with a heartbeat-shaped envelope at the room-average BPM, phase-aligned to `meshNow()` so all phones glow in unison.
 
 ## Privacy threat model

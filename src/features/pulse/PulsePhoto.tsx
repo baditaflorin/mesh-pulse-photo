@@ -28,6 +28,8 @@ export function PulsePhoto({ roomId }: Props) {
   const [roomBpm, setRoomBpm] = useState<number | null>(null);
   const [peerCount, setPeerCount] = useState(0);
   const [brightness, setBrightness] = useState(0); // 0..1 envelope for the pulsing background
+  const [manualBpm, setManualBpm] = useState<number | null>(null);
+  const [manualInput, setManualInput] = useState("");
 
   const cam = useCamera({ armed, facing: "environment" });
   const torch = useFlashlight(cam.stream);
@@ -36,6 +38,8 @@ export function PulsePhoto({ roomId }: Props) {
   const bufRef = useRef<number[]>([]);
   const lastSampleAtRef = useRef(0);
   const lastPublishAtRef = useRef(0);
+  const manualBpmRef = useRef<number | null>(null);
+  manualBpmRef.current = manualBpm;
 
   // Surface camera errors through the existing error UI.
   useEffect(() => {
@@ -117,14 +121,18 @@ export function PulsePhoto({ roomId }: Props) {
         }
       }
 
-      // Publish BPM every 2s
+      // Publish BPM every 2s. A manually-entered BPM (desktop / no-torch
+      // fallback) takes priority and bypasses the camera confidence gate —
+      // it mutates the exact same awareness `hr` field the sensor writes, so
+      // the room average and group glow behave identically for both paths.
       if (t - lastPublishAtRef.current > PUBLISH_INTERVAL_MS) {
         lastPublishAtRef.current = t;
         const aw = (mesh.room.provider as unknown as { awareness: AwarenessClock } | null)
           ?.awareness;
         if (aw) {
+          const manual = manualBpmRef.current;
           aw.setLocalStateField("hr", {
-            bpm: bpm !== null && confidence >= 0.3 ? bpm : null,
+            bpm: manual !== null ? manual : bpm !== null && confidence >= 0.3 ? bpm : null,
             ts: t,
           });
         }
@@ -180,6 +188,30 @@ export function PulsePhoto({ roomId }: Props) {
     setConfidence(0);
   };
 
+  // Manual BPM fallback — for desktop / iOS-no-torch / any device where the
+  // finger-over-lens reading isn't available. Publishes the entered BPM into
+  // the SAME awareness `hr` field the camera path writes, so the room average
+  // and group glow propagate to peers identically. Publishes immediately
+  // rather than waiting for the next 2s tick so the change crosses the mesh
+  // promptly.
+  const publishHrNow = (value: number | null) => {
+    if (!mesh) return;
+    const aw = (mesh.room.provider as unknown as { awareness: AwarenessClock } | null)?.awareness;
+    aw?.setLocalStateField("hr", { bpm: value, ts: mesh.clock.meshNow() });
+  };
+
+  const onLogManualBpm = () => {
+    const v = Math.round(Number(manualInput));
+    if (!Number.isFinite(v) || v < 30 || v > 220) {
+      setError("Enter a BPM between 30 and 220.");
+      return;
+    }
+    setError(null);
+    setManualBpm(v);
+    lastPublishAtRef.current = mesh ? mesh.clock.meshNow() : Date.now();
+    publishHrNow(v);
+  };
+
   if (!armed) {
     return (
       <div className="pulse-arm">
@@ -192,6 +224,10 @@ export function PulsePhoto({ roomId }: Props) {
         <button type="button" className="pulse-arm-button" onClick={onArm}>
           Allow camera &amp; connect
         </button>
+        <p className="pulse-hint">
+          No rear camera or torch (desktop, iOS Safari)? Connect and type your BPM in by hand — it
+          syncs the same way.
+        </p>
         {error && <p className="pulse-error">Camera error: {error}</p>}
         <p className="pulse-hint">Best with a bright torch. iOS Safari has no torch API.</p>
       </div>
@@ -214,12 +250,17 @@ export function PulsePhoto({ roomId }: Props) {
       </div>
 
       <div className="pulse-center">
-        <div className={`pulse-bpm ${lowConf ? "pulse-bpm-dim" : ""}`}>
-          {bpm ?? "—"}
+        <div
+          className={`pulse-bpm ${manualBpm === null && lowConf ? "pulse-bpm-dim" : ""}`}
+          data-testid="local-bpm"
+        >
+          {manualBpm ?? bpm ?? "—"}
           <span className="pulse-bpm-unit">BPM</span>
         </div>
-        <div className="pulse-room-bpm">room avg: {roomBpm ?? "—"} BPM</div>
-        {lowConf && (
+        <div className="pulse-room-bpm" data-testid="room-bpm">
+          room avg: {roomBpm ?? "—"} BPM
+        </div>
+        {manualBpm === null && lowConf && (
           <div className="pulse-low-conf">
             {ready
               ? "Low confidence — place finger more firmly over the camera lens."
@@ -231,6 +272,23 @@ export function PulsePhoto({ roomId }: Props) {
             No torch on this device — point at a bright lamp instead.
           </div>
         )}
+
+        <div className="pulse-manual">
+          <input
+            type="number"
+            min={30}
+            max={220}
+            inputMode="numeric"
+            className="pulse-manual-input"
+            aria-label="Enter BPM manually"
+            placeholder="BPM"
+            value={manualInput}
+            onChange={(e) => setManualInput(e.target.value)}
+          />
+          <button type="button" className="pulse-manual-button" onClick={onLogManualBpm}>
+            Log BPM manually
+          </button>
+        </div>
       </div>
 
       <button type="button" className="pulse-clear" onClick={onRecalibrate}>

@@ -193,3 +193,31 @@ body,
   border-radius: 6px;
   cursor: pointer;
 }
+
+.pulse-manual {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  align-items: center;
+}
+
+.pulse-manual-input {
+  width: 5rem;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--fg);
+  border-radius: 6px;
+}
+
+.pulse-manual-button {
+  padding: 0.45rem 1rem;
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--fg);
+  border-radius: 999px;
+  cursor: pointer;
+}
