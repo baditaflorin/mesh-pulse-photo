@@ -246,7 +246,7 @@ export function PulsePhoto({ roomId }: Props) {
       <canvas ref={canvasRef} width={16} height={16} className="pulse-canvas-hidden" />
 
       <div className="pulse-hud">
-        {peerCount + 1} phones · target {targetBpm ?? "—"} BPM
+        {peerCount + 1} {peerCount + 1 === 1 ? "person" : "people"} · target {targetBpm ?? "—"} BPM
       </div>
 
       <div className="pulse-center">
