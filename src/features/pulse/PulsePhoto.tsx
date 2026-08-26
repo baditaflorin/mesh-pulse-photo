@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useCamera, useFlashlight } from "@baditaflorin/mesh-common";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  MeshButton,
+  MeshLaunch,
+  MeshPresence,
+  MeshShellConnectionBridge,
+  MeshStatusPill,
+  MeshSurface,
+  type YRoom,
+  useCamera,
+  useFlashlight,
+} from "@baditaflorin/mesh-common";
 import { createRoomSync } from "../sync/yjsRoom";
 import { createClockSync } from "../sync/clockSync";
 import { maybeFetchTurnCredentials } from "../sync/iceConfig";
@@ -22,6 +32,7 @@ type Props = {
 
 export function PulsePhoto({ roomId }: Props) {
   const [armed, setArmed] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bpm, setBpm] = useState<number | null>(null);
   const [confidence, setConfidence] = useState(0);
@@ -67,6 +78,20 @@ export function PulsePhoto({ roomId }: Props) {
     const clock = createClockSync(room.provider);
     return { room, clock };
   }, [armed, roomId]);
+
+  // The feature owns the gesture-gated room, but reports that *real* room to
+  // MeshShell once it exists. This gives the shared Invite/Settings chrome
+  // honest diagnostics without causing a camera or connection on first load.
+  const shellRoom = useMemo<YRoom | null>(() => {
+    if (!mesh) return null;
+    return {
+      doc: mesh.room.doc,
+      provider: mesh.room.provider,
+      peerId: mesh.room.peerId,
+      peerCount,
+      roomId,
+    };
+  }, [mesh, peerCount, roomId]);
 
   useEffect(() => {
     if (!armed) return;
@@ -214,87 +239,175 @@ export function PulsePhoto({ roomId }: Props) {
 
   if (!armed) {
     return (
-      <div className="pulse-arm">
-        <h1>mesh-pulse-photo</h1>
-        <p>
-          Group heart-rate biofeedback. Place a fingertip lightly over your phone's rear camera (and
-          torch). The phone reads the green channel of the camera frame to estimate your BPM. All
-          phones glow together at the room's average BPM, synced in mesh-time.
-        </p>
-        <button type="button" className="pulse-arm-button" onClick={onArm}>
-          Allow camera &amp; connect
-        </button>
-        <p className="pulse-hint">
-          No rear camera or torch (desktop, iOS Safari)? Connect and type your BPM in by hand — it
-          syncs the same way.
-        </p>
-        {error && <p className="pulse-error">Camera error: {error}</p>}
-        <p className="pulse-hint">Best with a bright torch. iOS Safari has no torch API.</p>
-      </div>
+      <main className="pulse-entry-wrap">
+        <MeshLaunch
+          className="pulse-entry"
+          eyebrow="Private room pulse"
+          heading={
+            <>
+              Find the room’s
+              <br />
+              shared rhythm.
+            </>
+          }
+          promise="Use your rear camera and light to estimate a pulse, then let every connected phone move with the room average."
+          presence={
+            <span className="pulse-entry-presence">Camera stays off until you choose to start</span>
+          }
+          preview={
+            <div className="pulse-entry-preview">
+              <div className="pulse-entry-preview-step">
+                <span className="pulse-entry-step-number">01</span>
+                <span>Cover the rear lens and torch with a fingertip.</span>
+              </div>
+              <div className="pulse-entry-preview-step">
+                <span className="pulse-entry-step-number">02</span>
+                <span>Share only a BPM with this room — never camera frames.</span>
+              </div>
+              {guideOpen && (
+                <p className="pulse-entry-guide" id="pulse-entry-guide">
+                  Works best in a dim room with a bright rear torch. On desktop or iOS Safari, you
+                  can join the same room and log a manual BPM instead.
+                </p>
+              )}
+            </div>
+          }
+          primaryAction={{
+            label: "Allow camera & start pulse",
+            onClick: onArm,
+          }}
+          secondaryAction={{
+            label: guideOpen ? "Hide sensing guide" : "View sensing guide",
+            onClick: () => setGuideOpen((open) => !open),
+            "aria-controls": "pulse-entry-guide",
+            "aria-expanded": guideOpen,
+          }}
+        />
+      </main>
     );
   }
 
   const ready = bufferReady(bufRef.current);
   const lowConf = !ready || confidence < 0.3;
   const targetBpm = roomBpm ?? bpm;
-  const hue = 350; // pinky-red heartbeat
-  const bg = `radial-gradient(ellipse at center, hsla(${hue}, 70%, ${Math.round(15 + 35 * brightness)}%, 1) 0%, hsl(${hue}, 40%, 6%) 80%)`;
+  const captureLabel = cam.ready
+    ? "Lens reading live"
+    : cam.error
+      ? "Manual BPM ready"
+      : "Preparing lens";
+  const captureTone = cam.ready ? "live" : cam.error ? "warning" : "info";
+  const visibleError = cam.error ? cameraErrorCopy(cam.error) : error;
+  const stageStyle = { "--pulse-level": String(brightness) } as CSSProperties;
 
   return (
-    <div className="pulse-stage" style={{ background: bg }}>
+    <main className="pulse-stage" style={stageStyle} aria-label="Pulse reading workspace">
       <video ref={videoRef} className="pulse-video-hidden" playsInline muted />
       <canvas ref={canvasRef} width={16} height={16} className="pulse-canvas-hidden" />
+      <MeshShellConnectionBridge room={shellRoom} />
 
-      <div className="pulse-hud">
-        {peerCount + 1} {peerCount + 1 === 1 ? "person" : "people"} · target {targetBpm ?? "—"} BPM
-      </div>
-
-      <div className="pulse-center">
-        <div
-          className={`pulse-bpm ${manualBpm === null && lowConf ? "pulse-bpm-dim" : ""}`}
-          data-testid="local-bpm"
-        >
-          {manualBpm ?? bpm ?? "—"}
-          <span className="pulse-bpm-unit">BPM</span>
-        </div>
-        <div className="pulse-room-bpm" data-testid="room-bpm">
-          room avg: {roomBpm ?? "—"} BPM
-        </div>
-        {manualBpm === null && lowConf && (
-          <div className="pulse-low-conf">
-            {ready
-              ? "Low confidence — place finger more firmly over the camera lens."
-              : "Calibrating… place finger gently over the camera + torch."}
+      <div className="pulse-workbench">
+        <header className="pulse-stage-header">
+          <div className="pulse-room-label">
+            <span>Live room</span>
+            <strong>{roomId}</strong>
           </div>
-        )}
-        {torchSupported === false && (
-          <div className="pulse-hint-inline">
-            No torch on this device — point at a bright lamp instead.
+          <div className="pulse-stage-status">
+            <MeshStatusPill tone={captureTone} dot>
+              {captureLabel}
+            </MeshStatusPill>
+            <MeshPresence
+              count={peerCount + 1}
+              label={peerCount + 1 === 1 ? "device in room" : "devices in room"}
+              state={mesh?.room.provider ? "connected" : "connecting"}
+              announce="polite"
+            />
           </div>
-        )}
+        </header>
 
-        <div className="pulse-manual">
-          <input
-            type="number"
-            min={30}
-            max={220}
-            inputMode="numeric"
-            className="pulse-manual-input"
-            aria-label="Enter BPM manually"
-            placeholder="BPM"
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-          />
-          <button type="button" className="pulse-manual-button" onClick={onLogManualBpm}>
-            Log BPM manually
-          </button>
+        <div className="pulse-stage-grid">
+          <MeshSurface as="section" tone="accent" padding="lg" className="pulse-reading-panel">
+            <div className="pulse-reading-kicker">
+              <span>Current reading</span>
+              <span>{targetBpm ? `Room target ${targetBpm} BPM` : "Waiting for a reading"}</span>
+            </div>
+
+            <div className="pulse-meter" aria-hidden="true">
+              <div
+                className={`pulse-bpm ${manualBpm === null && lowConf ? "pulse-bpm-dim" : ""}`}
+                data-testid="local-bpm"
+              >
+                {manualBpm ?? bpm ?? "—"}
+                <span className="pulse-bpm-unit">BPM</span>
+              </div>
+            </div>
+
+            <div className="pulse-room-bpm" data-testid="room-bpm">
+              <span>room avg:</span> <strong>{roomBpm ?? "—"} BPM</strong>
+            </div>
+
+            {manualBpm === null && lowConf && (
+              <p className="pulse-low-conf">
+                {ready
+                  ? "Low confidence — cover the lens more completely."
+                  : "Calibrating — cover the rear lens and torch with your fingertip."}
+              </p>
+            )}
+          </MeshSurface>
+
+          <MeshSurface as="aside" tone="raised" padding="lg" className="pulse-support-panel">
+            <div>
+              <p className="pulse-support-eyebrow">Sensor notes</p>
+              <h2>Keep the reading local.</h2>
+              <p className="pulse-support-copy">
+                Camera pixels are sampled only on this device. The room receives a BPM, not an image
+                or video stream.
+              </p>
+            </div>
+
+            {torchSupported === false && (
+              <p className="pulse-hint-inline">
+                This device has no torch control. Use a bright lamp or enter a manual BPM.
+              </p>
+            )}
+
+            {visibleError && (
+              <p className="pulse-error" role="alert">
+                {visibleError}
+              </p>
+            )}
+
+            <div className="pulse-manual">
+              <label htmlFor="pulse-manual-input">Manual BPM</label>
+              <div className="pulse-manual-controls">
+                <input
+                  id="pulse-manual-input"
+                  type="number"
+                  min={30}
+                  max={220}
+                  inputMode="numeric"
+                  className="pulse-manual-input"
+                  aria-label="Enter BPM manually"
+                  placeholder="BPM"
+                  value={manualInput}
+                  onChange={(e) => setManualInput(e.target.value)}
+                />
+                <MeshButton variant="secondary" onClick={onLogManualBpm}>
+                  Log BPM manually
+                </MeshButton>
+              </div>
+            </div>
+
+            <MeshButton variant="quiet" size="sm" className="pulse-clear" onClick={onRecalibrate}>
+              Recalibrate sensor
+            </MeshButton>
+          </MeshSurface>
         </div>
-      </div>
 
-      <button type="button" className="pulse-clear" onClick={onRecalibrate}>
-        Recalibrate
-      </button>
-    </div>
+        <footer className="pulse-stage-footer">
+          A room-average light cue for shared moments — not a medical measurement.
+        </footer>
+      </div>
+    </main>
   );
 }
 
@@ -304,4 +417,15 @@ function pulseShape(phase: number): number {
   if (phase < 0.35) return Math.exp(-(phase - 0.1) * 8);
   if (phase < 0.42) return 0.4 * Math.exp(-(phase - 0.35) * 20);
   return 0;
+}
+
+function cameraErrorCopy(error: string): string {
+  const normalized = error.toLowerCase();
+  if (/notallowed|permission|denied/.test(normalized)) {
+    return "Camera permission was not granted. You can stay in this room and log a manual BPM instead.";
+  }
+  if (/notfound|not supported|unavailable/.test(normalized)) {
+    return "Camera sensing is unavailable on this device. You can stay in this room and log a manual BPM instead.";
+  }
+  return "Camera sensing could not start. You can stay in this room and log a manual BPM instead.";
 }

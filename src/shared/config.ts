@@ -1,17 +1,19 @@
-export const appConfig = {
+import { createMeshConfig } from "@baditaflorin/mesh-common";
+
+export const appConfig = createMeshConfig({
   appName: "mesh-pulse-photo",
-  storagePrefix: "mesh-pulse-photo",
+  displayName: "Pulse Photo",
+  visualProfile: "studio",
+  shellLayout: "inset",
   description:
-    "Group heart-rate biofeedback — phones read pulse via the rear camera (or a manual BPM entry) and glow at the room's average BPM.",
-  accentHex: "#ff8a9a",
+    "A private, shared pulse reading for live rooms. Camera pixels stay on your device; peers receive only a BPM.",
+  accentHex: "#d8b66a",
   version: __APP_VERSION__,
   commit: __GIT_COMMIT__,
-  repositoryUrl: "https://github.com/baditaflorin/mesh-pulse-photo",
-  pagesUrl: "https://baditaflorin.github.io/mesh-pulse-photo/",
   signalingUrl:
     (import.meta.env.VITE_WEBRTC_SIGNALING as string | undefined) ?? "wss://turn.0docker.com/ws",
   turnTokenUrl:
     (import.meta.env.VITE_TURN_TOKEN_URL as string | undefined) ??
     "https://turn.0docker.com/credentials",
   paypalUrl: "https://www.paypal.com/paypalme/florinbadita",
-} as const;
+});

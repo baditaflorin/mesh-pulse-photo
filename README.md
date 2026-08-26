@@ -1,15 +1,23 @@
-# mesh-pulse-photo
+# Pulse Photo
 
 [![Live](https://img.shields.io/badge/live-baditaflorin.github.io%2Fmesh--pulse--photo-FF8AA0?style=flat-square)](https://baditaflorin.github.io/mesh-pulse-photo/)
 [![Version](https://img.shields.io/github/package-json/v/baditaflorin/mesh-pulse-photo?style=flat-square&color=a06870)](https://github.com/baditaflorin/mesh-pulse-photo/blob/main/package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![No backend](https://img.shields.io/badge/backend-none-2a0a16?style=flat-square)](docs/adr/0001-deployment-mode.md)
 
-> Peer-to-peer mesh: group heart-rate biofeedback. Camera+flash reads your pulse; all phones glow at the room's average BPM.
+> A private, peer-to-peer pulse reading for live rooms. Your camera estimates a BPM locally; every connected phone moves with the room average.
 
 **Live:** https://baditaflorin.github.io/mesh-pulse-photo/
 
-Place your fingertip lightly over your phone's rear camera (and torch). The phone reads the green channel of the camera frame to estimate your BPM. Every phone publishes its BPM into the mesh. All phones glow together at the room's **average BPM**, synced via mesh-time. Group biofeedback meditation without a $300 watch.
+Place your fingertip lightly over your phone's rear camera and torch. The phone reads the green channel of the camera frame to estimate your BPM. Every phone publishes its BPM into the mesh. All phones glow together at the room's **average BPM**, synced via mesh-time.
+
+The first screen keeps the camera off until you choose **Allow camera & start pulse**. Camera frames and pixel samples remain on the device; peers receive only a scalar BPM (or `null`).
+
+## Experience
+
+| Launch                                   | Two-peer room                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------- |
+| [Launch screenshot](docs/screenshot.png) | [Live two-peer preview](docs/preview.png) · [15-second demo](docs/demo.gif) |
 
 **No rear camera or torch?** On desktop, or on iOS Safari where there is no torch API, the camera reading may not work. A **manual BPM entry** lets you type your pulse in by hand; it publishes into the exact same mesh channel the camera path uses, so the room average and the group glow behave identically either way.
 
@@ -37,7 +45,7 @@ See [docs/privacy.md](docs/privacy.md). Short version: **no camera frames or pix
 ```bash
 git clone https://github.com/baditaflorin/mesh-pulse-photo.git
 cd mesh-pulse-photo
-npm install
+npm ci
 npm run dev
 ```
 
@@ -48,6 +56,12 @@ npm run dev
 - **Signaling URL** / **TURN credentials URL** — override the self-hosted defaults.
 
 All persisted to `localStorage`.
+
+## Release media and checks
+
+- `npm run screenshot` refreshes `docs/screenshot.png`.
+- `npm run demo` records the two-peer `docs/preview.png` and `docs/demo.gif`.
+- `npm run audit:security` refreshes the published security-audit report.
 
 ## Self-hosted infrastructure
 
